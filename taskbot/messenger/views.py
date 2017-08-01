@@ -30,8 +30,17 @@ def receive_message(event):
         send_text_message(sender_id, 'received attachments')
 
 
-def send_generic_message(recipient_id, message_text):
-    print "send message"
+def send_generic_message(recipient_id):
+    message_data = {
+        'recipient': {
+            'id': recipient_id
+        },
+        'message': {
+            'text': 'Hello you special you'
+        }
+    }
+
+    call_send_api(message_data)
 
 
 def send_text_message(recipient_id, message_text):
@@ -48,25 +57,24 @@ def send_text_message(recipient_id, message_text):
 
 
 def call_send_api(message_data): 
+
     req = requests.post(
         'https://graph.facebook.com/v2.6/me/messages',
-        params = os.environ.get('FB_ACCESS_TOKEN', None),
+        headers = { 'content-type':  'application/json' },
+        params = { 'access_token': os.environ.get('FB_ACCESS_TOKEN', None) },
         data = json.dumps( message_data )
     )
     
-    # res = json.loads( req.json() )
-    print req.json()
+    res = json.loads( req.json() )
 
-    # if req.status_code == 200:
-    #     print res
-    #     recipient_id = res.get('message_id')
-    #     message_id = res.get('message_id')
+    if req.status_code == 200:
+        recipient_id = res.get('message_id')
+        message_id = res.get('message_id')
+        print( 'Successfully sent generic message with id {0} to recipient {1}'.format(recipient_id, message_id) )
 
-    #     print( 'Successfully sent generic message with id {0} to recipient {1}'.format(recipient_id, message_id) )
-
-    # else:
-    #     print("Unable to send message")
-    #     print( res.json() )
+    else:
+        print("Unable to send message")
+        print( res.json() )
 
 
 # Create your views here.
