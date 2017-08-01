@@ -1,5 +1,7 @@
 # task-bot
 
+README is work in prog...
+
 You will need a ```.env``` file with the following content: 
 
 ```
