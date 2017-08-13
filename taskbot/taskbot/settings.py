@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'accounts.apps.AccountsConfig',
+    'events.apps.EventsConfig',
     'messenger.apps.MessengerConfig',
 ]
 

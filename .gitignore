@@ -6,3 +6,4 @@ connect.sh
 *.sqlite3
 
 env/
+data/

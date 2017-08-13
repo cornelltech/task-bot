@@ -10,7 +10,7 @@ from django.http import HttpResponse, JsonResponse
 from django.views import View
 
 from accounts.models import Account
-
+from units.units import pick_listing
 
 
 def set_fb_getstarted_btn():
@@ -20,13 +20,52 @@ def set_fb_getstarted_btn():
         headers = { 'content-type':  'application/json' },
         params = { 'access_token': os.environ.get('FB_ACCESS_TOKEN', None) },
         data = json.dumps( {
-            'payload': "Hey {{user_first_name}}! Let's play this game."
+            'get_started': {
+                'payload': "START"
+            }
         } )
     )
     
     res = req.json()
-    print "*"*50
-    print res
+
+
+def set_fb_menu():
+    # https://developers.facebook.com/docs/messenger-platform/messenger-profile/persistent-menu#testing
+
+    payload = {
+        'persistent_menu': [
+            {
+                'locale': 'default',
+                'composer_input_disabled': True,
+                'call_to_actions': [
+                    {
+                        'type': 'postback',
+                        'title': 'Guess the price!',
+                        'payload': 'PLAY'
+                    },
+                    {
+                        'type': 'postback',
+                        'title': 'My Score',
+                        'payload': 'SCORE'
+                    },
+                    {
+                        'type': 'postback',
+                        'title': 'About',
+                        'payload': 'ABOUT'
+                    },
+                ]
+            }
+        ]
+    }
+
+    req = requests.post(
+        'https://graph.facebook.com/v2.6/me/messenger_profile',
+        headers = { 'content-type':  'application/json' },
+        params = { 'access_token': os.environ.get('FB_ACCESS_TOKEN', None) },
+        data = json.dumps( payload )
+    )
+
+    res = req.json()
 
 
 def set_fb_greeting_msg():
@@ -35,7 +74,7 @@ def set_fb_greeting_msg():
         "greeting": [
             {
                 "locale":"default",
-                "text":"Hello!"
+                "text":"Hey there! Let's find out how street savy you are. We'll show you a few apartments in NYC and all you have to do is guess what their price is!"
             }
         ] 
     }
@@ -48,8 +87,6 @@ def set_fb_greeting_msg():
     )
 
     res = req.json()
-    print "*"*50
-    print res
 
 
 
@@ -94,42 +131,13 @@ def receive_message(event):
 
     message_id          = message.get('mid')
     message_text        = message.get('text')
+    message_quickreply  = message.get('quick_reply', None)
     message_attachments = message.get('attachments')
 
-    ########################################
-    ########################################
-    # fetch_fb_user(sender_id)
+    if message_quickreply is not None:
+        print("*"*50)
+        print(event)
 
-    # set_fb_getstarted_btn()
-
-    # set_fb_greeting_msg()
-
-    ########################################
-    ########################################
-
-    if message_text:
-        if message_text == 'hi':
-            send_generic_message(sender_id)
-        elif message_text == 'btn':
-
-            btns = [
-                {
-                    "type"      :"postback",
-                    "title"     :"Start Chatting",
-                    "payload"   :'BTN1'
-                },
-                {
-                    "type"      :"postback",
-                    "title"     :"other",
-                    "payload"   :'BTN2'
-                }
-            ]
-
-            send_btn_message(sender_id, message_text="hi there, click a btn", message_btns=btns)
-        else:
-            send_text_message(sender_id, message_text)
-    elif message_attachments:
-        send_text_message(sender_id, 'received attachments')
 
 def receive_postback(event):
     sender_id       = event.get('sender').get('id')
@@ -142,7 +150,47 @@ def receive_postback(event):
     postback_payload = postback.get('payload')
     postback_title   = postback.get('title')
 
-    print( postback )
+    """
+    Options are:
+        START
+        PLAY
+        SCORE
+        ABOUT
+    """
+
+    if postback_payload == 'START':
+        fetch_fb_user(sender_id)
+
+        send_text_message(sender_id, "Hey there! Thanks for playing, let's start with this apartment!")
+
+    elif postback_payload == 'PLAY':
+        
+        unit = pick_listing(sender_id)
+        
+        if unit is None:
+            send_text_message(sender_id, 'Sorry, looks like we have no more apartments to show you, come play later :)')
+            return
+        
+        quick_buttons = [
+                {
+                    "content_type"  :"text",
+                    "title"         :"Yes",
+                    "payload"       :"BROWSE",
+                },
+                {
+                    "content_type"  :"text",
+                    "title"         :"No",
+                    "payload"       :"BROWSE",
+                },
+            ]
+        send_quick_replay_message(sender_id, 'How much do you think this is?', quick_buttons)
+
+
+    elif postback_payload == 'SCORE':
+        send_text_message(sender_id, 'Your score is ...')
+
+    elif postback_payload == 'ABOUT':
+        send_text_message(sender_id, 'This is a project that does ...')
 
 
 def send_generic_message(recipient_id):
@@ -151,7 +199,7 @@ def send_generic_message(recipient_id):
             'id': recipient_id
         },
         'message': {
-            'text': 'Hello you special you'
+            'text': 'Sorry, I didn\'t get that :/' 
         }
     }
 
@@ -192,6 +240,41 @@ def send_btn_message(recipient_id, message_text=None, message_btns=[]):
     call_send_api(message_data)
 
 
+def send_generic_template_message(recipient_id, elements=[]):
+    # https://developers.facebook.com/docs/messenger-platform/send-api-reference/generic-template
+    message_data = {
+        'recipient': {
+            'id': recipient_id
+        },
+        'message': {
+            'attachment': {
+                'type':'template',
+                'payload': {
+                    'template_type': 'generic',
+                    'elements': elements
+                }
+            }
+        }
+    }
+
+    call_send_api(message_data)
+
+
+def send_quick_replay_message(recipient_id, message_text=None, message_btns=[]):
+    # https://developers.facebook.com/docs/messenger-platform/send-api-reference/quick-replies
+    message_data = {
+        'recipient': {
+            'id': recipient_id
+        },
+        'message': {
+            'text': message_text,
+            'quick_replies': message_btns
+        }
+    }
+
+    call_send_api(message_data)
+
+
 def call_send_api(message_data): 
 
     req = requests.post(
@@ -225,6 +308,28 @@ class FBWebhookResponseView(View):
         else:
             return HttpResponse( status=403 )
 
+    def put(self, request, *args, **kwargs):
+        print "Configuring Messenger"
+
+        try:
+            
+            set_fb_greeting_msg()
+            set_fb_getstarted_btn()
+            set_fb_menu()
+            
+            return HttpResponse( status=200 )
+
+        except Exception as e:
+            
+            print(e)
+            print(traceback.print_exc())
+
+            return HttpResponse( status=400 )
+        
+
+        
+
+
     def post(self, request, *args, **kwargs):
 
         request_body = json.loads(request.body)
@@ -242,6 +347,7 @@ class FBWebhookResponseView(View):
 
                     # Iterate over each messaging event
                     messaging = obj.get('messaging')
+
                     for msg in messaging:
                         if msg.get('message'):
                             receive_message(msg)
@@ -253,7 +359,7 @@ class FBWebhookResponseView(View):
                 pass
         except Exception as e:
             print(e)
-            print traceback.print_exc()
+            print(traceback.print_exc())
         
 
         response = JsonResponse({}, status=200)
